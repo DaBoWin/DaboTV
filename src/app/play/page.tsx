@@ -17,7 +17,8 @@ import {
   toggleFavorite,
 } from '@/lib/db.client';
 import { VideoDetail } from '@/lib/types';
-import { createHlsFragmentFilter, adFilter } from '@/lib/adFilter';
+import { adFilter } from '@/lib/adFilter';
+import { filterAdsFromM3U8 } from '@/lib/m3u8AdFilter';
 import AdFilterSettings from '@/components/AdFilterSettings';
 
 // 扩展 HTMLVideoElement 类型以支持 hls 属性
@@ -500,20 +501,46 @@ function PlayPageClient() {
             if (video.hls) {
               video.hls.destroy();
             }
+
             const hls = new Hls({
-              debug: false, // 关闭日志
-              enableWorker: true, // WebWorker 解码，降低主线程压力
-              lowLatencyMode: true, // 开启低延迟 LL-HLS
-
-              /* 缓冲/内存相关 */
-              maxBufferLength: 30, // 前向缓冲最大 30s，过大容易导致高延迟
-              backBufferLength: 30, // 仅保留 30s 已播放内容，避免内存占用
-              maxBufferSize: 60 * 1000 * 1000, // 约 60MB，超出后触发清理
-
-              /* 广告过滤配置 */
-              fragLoadTimeOut: 20000, // 片段加载超时时间
-              maxFragLookUpTolerance: 0.25, // 片段查找容差
-              maxMaxBufferLength: 600, // 最大缓冲长度
+              debug: false,
+              enableWorker: true,
+              lowLatencyMode: true,
+              maxBufferLength: 30,
+              backBufferLength: 30,
+              maxBufferSize: 60 * 1000 * 1000,
+              fragLoadTimeOut: 20000,
+              maxFragLookUpTolerance: 0.25,
+              maxMaxBufferLength: 600,
+              
+              // 自定义 playlist 加载器，在 M3U8 解析层面过滤广告
+              pLoader: class extends Hls.DefaultConfig.loader {
+                load(context: any, config: any, callbacks: any) {
+                  const originalOnSuccess = callbacks.onSuccess;
+                  
+                  callbacks.onSuccess = (response: any, stats: any, context: any) => {
+                    // 只处理 playlist 类型的请求
+                    if (context.type === 'manifest' || context.type === 'level') {
+                      const originalData = response.data;
+                      
+                      if (typeof originalData === 'string' && originalData.includes('#EXTM3U')) {
+                        // 在 M3U8 层面过滤广告片段
+                        const result = filterAdsFromM3U8(originalData, currentSource);
+                        
+                        if (result.removedSegments > 0) {
+                          console.log(`[M3U8AdFilter] 已过滤 ${result.removedSegments} 个广告片段`);
+                        }
+                        
+                        response.data = result.content;
+                      }
+                    }
+                    
+                    originalOnSuccess(response, stats, context);
+                  };
+                  
+                  super.load(context, config, callbacks);
+                }
+              },
             });
 
             hls.loadSource(url);
@@ -522,112 +549,12 @@ function PlayPageClient() {
 
             ensureVideoSource(video, url);
 
-            // 广告过滤：监听片段加载事件 - 增强版
-            hls.on(Hls.Events.FRAG_LOADING, function (event: any, data: any) {
-              const fragUrl = data.frag.url || data.frag.uri;
-              const fragDuration = data.frag.duration || data.frag.inf?.duration;
-              const fragIndex = data.frag.index || data.frag.sn;
-              
-              // 使用增强的广告检测
-              const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, fragIndex);
-              
-              if (isAd) {
-                console.log(`[AdFilter] 检测到广告片段，跳过: ${fragUrl} (${fragDuration}s, 索引: ${fragIndex})`);
-                
-                // 方法1: 尝试跳过当前片段
-                try {
-                  // 设置播放位置到片段结束时间
-                  if (video.currentTime && fragDuration) {
-                    const skipTime = video.currentTime + fragDuration;
-                    video.currentTime = Math.min(skipTime, video.duration || skipTime);
-                  }
-                } catch (error) {
-                  console.warn('[AdFilter] 跳过片段失败:', error);
-                }
-                
-                // 方法2: 尝试切换到下一个质量级别
-                try {
-                  if (hls.nextLoadLevel !== undefined) {
-                    hls.nextLoadLevel = hls.nextLoadLevel;
-                  }
-                } catch (error) {
-                  console.warn('[AdFilter] 切换级别失败:', error);
-                }
-              }
-            });
-
-            // 监听片段解析完成事件，获取更详细的片段信息
-            hls.on(Hls.Events.FRAG_PARSING_METADATA, function (event: any, data: any) {
-              const fragUrl = data.frag?.url || data.frag?.uri;
-              const fragDuration = data.frag?.duration;
-              const fragIndex = data.frag?.index || data.frag?.sn;
-              
-              if (fragUrl) {
-                const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, fragIndex);
-                if (isAd) {
-                  console.log(`[AdFilter] 片段元数据检测到广告: ${fragUrl} (${fragDuration}s, 索引: ${fragIndex})`);
-                }
-              }
-            });
-
-            // 监听片段加载完成事件，进行二次检查和快速跳过
-            hls.on(Hls.Events.FRAG_LOADED, function (event: any, data: any) {
-              const fragUrl = data.frag.url || data.frag.uri;
-              const fragDuration = data.frag.duration;
-              const fragIndex = data.frag.index || data.frag.sn;
-              
-              if (fragUrl) {
-                const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, fragIndex);
-                
-                if (isAd && fragDuration && video.currentTime) {
-                  console.log(`[AdFilter] 片段加载完成后检测到广告，快速跳过: ${fragUrl} (${fragDuration}s)`);
-                  
-                  // 快速跳过广告片段
-                  try {
-                    const currentTime = video.currentTime;
-                    const skipTarget = currentTime + fragDuration;
-                    
-                    // 使用小幅度多次跳过，避免被检测
-                    const skipSteps = Math.ceil(fragDuration / 2);
-                    let currentSkip = 0;
-                    
-                    const skipInterval = setInterval(() => {
-                      if (currentSkip >= skipSteps || video.currentTime >= skipTarget) {
-                        clearInterval(skipInterval);
-                        return;
-                      }
-                      
-                      video.currentTime = Math.min(video.currentTime + 2, skipTarget);
-                      currentSkip++;
-                    }, 100);
-                    
-                  } catch (error) {
-                    console.warn('[AdFilter] 快速跳过失败:', error);
-                  }
-                }
-              }
-            });
-
-            // 监听播放时间更新，检测可能的广告片段
-            hls.on(Hls.Events.TIME_UPDATE, function (event: any, data: any) {
-              // 这里可以添加基于播放时间的广告检测逻辑
-              // 例如检测播放进度是否在广告时间段内
-            });
-
-            // 监听播放列表解析完成事件，过滤广告片段
+            // 监听播放列表解析完成
             hls.on(Hls.Events.MANIFEST_PARSED, function (event: any, data: any) {
-              console.log('[AdFilter] 播放列表解析完成，开始过滤广告片段');
-              
-              // 过滤各级别中的广告片段
-              data.levels.forEach((level: any, index: number) => {
-                if (level.url && adFilter.isAd(level.url)) {
-                  console.log(`[AdFilter] 过滤广告级别: ${index}`);
-                  // 可以选择禁用包含广告的级别
-                  // hls.levelController.levels = hls.levelController.levels.filter(l => l !== level);
-                }
-              });
+              console.log('[AdFilter] 播放列表解析完成');
             });
 
+            // 错误处理
             hls.on(Hls.Events.ERROR, function (event: any, data: any) {
               console.error('HLS Error:', event, data);
               if (data.fatal) {

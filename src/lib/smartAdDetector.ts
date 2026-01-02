@@ -88,51 +88,23 @@ export class SmartAdDetector {
 
   /**
    * 基于时长分析
+   * 注意：单纯基于时长判断广告不可靠，需要结合其他因素
    */
   private analyzeByDuration(duration: number): DetectionResult {
-    // 极短片段 (1-10秒) - 默认不认为是广告，除非有其他强信号
-    if (duration >= 1 && duration <= 10) {
-      return {
-        isAd: false, // 默认不认为是广告
-        confidence: 0.05, // 极低置信度
-        reason: `极短片段 (${duration}s)`,
-        adType: 'short'
-      };
-    }
-
-    // 中等片段 (11-30秒) - 广告可能性较高，但仍需其他证据
-    if (duration >= 11 && duration <= 30) {
-      return {
-        isAd: true,
-        confidence: 0.5, // 适中置信度，需要结合其他因素
-        reason: `中等片段 (${duration}s)`,
-        adType: 'mid-roll'
-      };
-    }
-
-    // 较长片段 (31-60秒) - 默认不认为是广告
-    if (duration >= 31 && duration <= 60) {
-      return {
-        isAd: false, // 默认不认为是广告
-        confidence: 0.1, // 较低置信度
-        reason: `较长片段 (${duration}s)`,
-        adType: 'mid-roll'
-      };
-    }
-
-    // 正常内容片段 (通常 > 60秒) - 极高置信度非广告
+    // 正常内容片段 (通常 > 60秒) - 高置信度非广告
     if (duration > 60) {
       return {
         isAd: false,
-        confidence: 0.99, // 进一步提高非广告内容的置信度
+        confidence: 0.95,
         reason: `正常内容片段 (${duration}s)`
       };
     }
-    
+
+    // 其他时长不做判断，需要结合 URL/标题等其他因素
     return {
       isAd: false,
-      confidence: 0.05, // 默认极低置信度
-      reason: `时长模糊 (${duration}s)`
+      confidence: 0.1,
+      reason: `时长 ${duration}s，需结合其他因素判断`
     };
   }
 

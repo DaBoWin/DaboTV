@@ -24,12 +24,13 @@ export interface CustomPattern {
     max: number;
   };
   priority: number; // 优先级，数字越大优先级越高
+  matchType?: 'contains' | 'regex'; // 新增：匹配类型，默认为 'contains'
 }
 
 // 默认广告过滤配置
 export const DEFAULT_AD_CONFIG: AdFilterConfig = {
   enabled: true,
-  strictMode: false, // 严格模式可能会误过滤正常内容
+  strictMode: false, // 严格模式下只使用特定源规则，减少误过滤
   customPatterns: [
     {
       name: 'Pre-roll Ads',
@@ -37,23 +38,17 @@ export const DEFAULT_AD_CONFIG: AdFilterConfig = {
       urlPatterns: ['pre-roll', 'preroll', 'intro-ad', 'opening-ad', 'prelude'],
       titlePatterns: ['广告', '预告', '推广', '赞助', '宣传片'],
       durationRange: { min: 5, max: 120 },
-      priority: 10
+      priority: 10,
+      matchType: 'contains'
     },
     {
       name: 'Mid-roll Ads',
       enabled: true,
       urlPatterns: ['mid-roll', 'midroll', 'break', 'intermission'],
       titlePatterns: ['插播', '中断', '休息', '暂停'],
-      durationRange: { min: 3, max: 30 }, // 调整为3-30秒，针对视频中的短广告
-      priority: 8
-    },
-    {
-      name: 'Post-roll Ads',
-      enabled: true,
-      urlPatterns: ['post-roll', 'postroll', 'ending-ad', 'credits-ad'],
-      titlePatterns: ['片尾', '结束', '字幕', '制作信息'],
-      durationRange: { min: 5, max: 300 },
-      priority: 6
+      durationRange: { min: 3, max: 30 },
+      priority: 8,
+      matchType: 'contains'
     },
     {
       name: 'Sponsor Content',
@@ -61,31 +56,17 @@ export const DEFAULT_AD_CONFIG: AdFilterConfig = {
       urlPatterns: ['sponsor', 'sponsored', 'promotion', 'promo'],
       titlePatterns: ['赞助', '推广', '合作', '品牌'],
       durationRange: { min: 3, max: 60 },
-      priority: 7
-    },
-    {
-      name: 'Short Video Ads', // 新增：专门针对视频中的短广告
-      enabled: true,
-      urlPatterns: ['ad', 'advertisement', 'commercial', 'marketing', 'promo', 'brand'],
-      titlePatterns: ['广告', '推广', '品牌', '营销', '商业', '赞助商'],
-      durationRange: { min: 3, max: 20 }, // 3-20秒的短广告
-      priority: 9 // 高优先级
-    },
-    {
-      name: 'Embedded Ads', // 新增：嵌入在视频中的广告
-      enabled: true,
-      urlPatterns: ['embed', 'insert', 'overlay', 'popup', 'banner'],
-      titlePatterns: ['嵌入', '插入', '弹窗', '横幅', '浮动'],
-      durationRange: { min: 5, max: 15 }, // 5-15秒的嵌入广告
-      priority: 8
+      priority: 7,
+      matchType: 'contains'
     },
     {
       name: 'Generic Ads',
       enabled: true,
-      urlPatterns: ['ad', 'advertisement', 'commercial', 'marketing'],
+      urlPatterns: ['adserver', 'adservice', 'doubleclick', 'googlesyndication', 'admanager', 'vast', 'vpaid'],
       titlePatterns: ['广告', '营销', '商业', '推广'],
       durationRange: { min: 5, max: 300 },
-      priority: 5
+      priority: 5,
+      matchType: 'contains'
     }
   ],
   skipPreRoll: true,

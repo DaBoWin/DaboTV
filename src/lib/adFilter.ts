@@ -70,17 +70,37 @@ export function isAdSegment(
     
     // 检查 URL 模式
     if (pattern.urlPatterns.length > 0) {
-      const urlMatch = pattern.urlPatterns.some(keyword =>
-        segmentUrl.toLowerCase().includes(keyword.toLowerCase())
-      );
+      const urlMatch = pattern.urlPatterns.some(patternString => {
+        if (pattern.matchType === 'regex') {
+          try {
+            const regex = new RegExp(patternString, 'i'); // 'i' for case-insensitive
+            return regex.test(segmentUrl);
+          } catch (e) {
+            console.error(`[AdFilter] 无效的正则表达式: ${patternString}`, e);
+            return false;
+          }
+        } else {
+          return segmentUrl.toLowerCase().includes(patternString.toLowerCase());
+        }
+      });
       if (!urlMatch) match = false;
     }
     
     // 检查标题模式
     if (match && pattern.titlePatterns.length > 0 && title) {
-      const titleMatch = pattern.titlePatterns.some(keyword =>
-        title.toLowerCase().includes(keyword.toLowerCase())
-      );
+      const titleMatch = pattern.titlePatterns.some(patternString => {
+        if (pattern.matchType === 'regex') {
+          try {
+            const regex = new RegExp(patternString, 'i');
+            return regex.test(title);
+          } catch (e) {
+            console.error(`[AdFilter] 无效的正则表达式: ${patternString}`, e);
+            return false;
+          }
+        } else {
+          return title.toLowerCase().includes(patternString.toLowerCase());
+        }
+      });
       if (!titleMatch) match = false;
     }
     
