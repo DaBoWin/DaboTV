@@ -2,7 +2,7 @@
 
 'use client';
 
-import { Heart } from 'lucide-react';
+import { Heart, Settings } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { useEffect, useRef, useState } from 'react';
@@ -17,6 +17,8 @@ import {
   toggleFavorite,
 } from '@/lib/db.client';
 import { VideoDetail } from '@/lib/types';
+import { createHlsFragmentFilter, adFilter } from '@/lib/adFilter';
+import AdFilterSettings from '@/components/AdFilterSettings';
 
 // 扩展 HTMLVideoElement 类型以支持 hls 属性
 declare global {
@@ -106,6 +108,9 @@ function PlayPageClient() {
 
   // 用于记录是否需要在播放器 ready 后跳转到指定进度
   const resumeTimeRef = useRef<number | null>(null);
+
+  // 广告过滤设置状态
+  const [showAdFilterSettings, setShowAdFilterSettings] = useState(false);
 
   // 动态导入的 Artplayer 与 Hls 实例
   const [{ Artplayer, Hls }, setPlayers] = useState<{
@@ -504,6 +509,11 @@ function PlayPageClient() {
               maxBufferLength: 30, // 前向缓冲最大 30s，过大容易导致高延迟
               backBufferLength: 30, // 仅保留 30s 已播放内容，避免内存占用
               maxBufferSize: 60 * 1000 * 1000, // 约 60MB，超出后触发清理
+
+              /* 广告过滤配置 */
+              fragLoadTimeOut: 20000, // 片段加载超时时间
+              maxFragLookUpTolerance: 0.25, // 片段查找容差
+              maxMaxBufferLength: 600, // 最大缓冲长度
             });
 
             hls.loadSource(url);
@@ -511,6 +521,30 @@ function PlayPageClient() {
             video.hls = hls;
 
             ensureVideoSource(video, url);
+
+            // 广告过滤：监听片段加载事件
+            hls.on(Hls.Events.FRAG_LOADING, function (event: any, data: any) {
+              const fragUrl = data.frag.url || data.frag.uri;
+              if (fragUrl && adFilter.isAd(fragUrl)) {
+                console.log(`[AdFilter] 检测到广告片段，跳过: ${fragUrl}`);
+                // 跳过广告片段
+                hls.nextLevel();
+              }
+            });
+
+            // 监听播放列表解析完成事件，过滤广告片段
+            hls.on(Hls.Events.MANIFEST_PARSED, function (event: any, data: any) {
+              console.log('[AdFilter] 播放列表解析完成，开始过滤广告片段');
+              
+              // 过滤各级别中的广告片段
+              data.levels.forEach((level: any, index: number) => {
+                if (level.url && adFilter.isAd(level.url)) {
+                  console.log(`[AdFilter] 过滤广告级别: ${index}`);
+                  // 可以选择禁用包含广告的级别
+                  // hls.levelController.levels = hls.levelController.levels.filter(l => l !== level);
+                }
+              });
+            });
 
             hls.on(Hls.Events.ERROR, function (event: any, data: any) {
               console.error('HLS Error:', event, data);
@@ -546,6 +580,14 @@ function PlayPageClient() {
             tooltip: '播放下一集',
             click: function () {
               handleNextEpisode();
+            },
+          },
+          {
+            position: 'right',
+            html: '<i class="art-icon flex"><svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 15.5A3.5 3.5 0 0 1 8.5 12A3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5a3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97c0-.33-.03-.65-.07-.97l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.3-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.08-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11c-.04.32-.07.64-.07.97c0 .33.03.65.07.97l-2.11 1.63c-.19.15-.24.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1c.52.39 1.06.73 1.69.98l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.25 1.17-.59 1.69-.98l2.49 1c.22.08.49 0 .61-.22l2-3.46c.13-.22.07-.49-.12-.64l-2.11-1.63Z" fill="currentColor"/></svg></i>',
+            tooltip: '广告过滤设置',
+            click: function () {
+              setShowAdFilterSettings(true);
             },
           },
           {
@@ -1399,10 +1441,11 @@ function PlayPageClient() {
   }
 
   return (
-    <div
-      className='bg-black fixed inset-0 overflow-hidden overscroll-contain'
-      style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
-    >
+    <>
+      <div
+        className='bg-black fixed inset-0 overflow-hidden overscroll-contain'
+        style={{ height: 'calc(var(--vh, 1vh) * 100)' }}
+      >
       {/* 竖屏提示蒙层 */}
       {showOrientationTip && (
         <div className='fixed bottom-16 left-1/2 -translate-x-1/2 z-[190] flex items-center px-4 py-2 rounded bg-black/70 text-white space-x-2 pointer-events-none backdrop-blur-sm'>
@@ -1809,6 +1852,13 @@ function PlayPageClient() {
         </div>
       </div>
     </div>
+
+    {/* 广告过滤设置 */}
+      <AdFilterSettings 
+        isOpen={showAdFilterSettings}
+        onClose={() => setShowAdFilterSettings(false)}
+      />
+    </>
   );
 }
 
