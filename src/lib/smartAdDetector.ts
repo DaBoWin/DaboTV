@@ -90,57 +90,58 @@ export class SmartAdDetector {
    * 基于时长分析
    */
   private analyzeByDuration(duration: number): DetectionResult {
-    // 极短片段 (1-5秒) - 可能是片头/片尾广告或品牌植入
-    if (duration >= 1 && duration <= 5) {
+    // 极短片段 (1-3秒) - 极低置信度，很可能是片头/片尾或转场
+    if (duration >= 1 && duration <= 3) {
       return {
-        isAd: true,
-        confidence: 0.6, // 降低置信度，避免误判短片头
+        isAd: false, // 默认不认为是广告
+        confidence: 0.1,
         reason: `极短片段 (${duration}s)`,
         adType: 'short'
       };
     }
 
-    // 短片段 (6-15秒) - 较高概率是广告
-    if (duration >= 6 && duration <= 15) {
+    // 短片段 (4-10秒) - 可能是广告，但置信度不高
+    if (duration >= 4 && duration <= 10) {
       return {
         isAd: true,
-        confidence: 0.75, // 提高此范围的置信度
+        confidence: 0.4, // 进一步降低置信度
         reason: `短片段 (${duration}s)`,
         adType: 'short'
       };
     }
 
-    // 中等片段 (16-45秒) - 可能是插播广告，但需更多证据
-    if (duration >= 16 && duration <= 45) {
+    // 中等片段 (11-30秒) - 广告可能性较高
+    if (duration >= 11 && duration <= 30) {
       return {
         isAd: true,
-        confidence: 0.5, // 适中置信度
+        confidence: 0.6, // 提高此范围的置信度
         reason: `中等片段 (${duration}s)`,
         adType: 'mid-roll'
       };
     }
 
-    // 正常内容片段 (通常 > 60秒)
+    // 较长片段 (31-60秒) - 可能是广告，但需更多证据
+    if (duration >= 31 && duration <= 60) {
+      return {
+        isAd: true,
+        confidence: 0.4, // 适中置信度
+        reason: `较长片段 (${duration}s)`,
+        adType: 'mid-roll'
+      };
+    }
+
+    // 正常内容片段 (通常 > 60秒) - 极高置信度非广告
     if (duration > 60) {
       return {
         isAd: false,
-        confidence: 0.9, // 提高非广告内容的置信度
+        confidence: 0.95, // 进一步提高非广告内容的置信度
         reason: `正常内容片段 (${duration}s)`
       };
     }
     
-    // 较短但非典型广告时长 (46-60秒) - 倾向于非广告
-    if (duration > 45 && duration <= 60) {
-      return {
-        isAd: false,
-        confidence: 0.6,
-        reason: `非典型广告时长 (${duration}s)`
-      };
-    }
-
     return {
       isAd: false,
-      confidence: 0.3, // 默认较低置信度
+      confidence: 0.2, // 默认较低置信度
       reason: `时长模糊 (${duration}s)`
     };
   }
@@ -154,10 +155,10 @@ export class SmartAdDetector {
     // 广告关键词检测 - 增加权重，减少通用词
     const highConfidenceAdKeywords = [
       'adserver', 'adservice', 'doubleclick', 'googlesyndication', 'admanager',
-      'vast', 'vpaid', 'preroll', 'postroll', 'midroll', 'commercials'
+      'vast', 'vpaid', 'preroll', 'postroll', 'midroll', 'commercials', 'adtag'
     ];
     const mediumConfidenceAdKeywords = [
-      'ad', 'ads', 'advertisement', 'promo', 'promotion', 'sponsor', 'sponsored'
+      'ad', 'ads', 'advertisement', 'promo', 'promotion', 'sponsor', 'sponsored', 'brand_ad'
     ];
 
     let confidence = 0.1;
@@ -167,7 +168,7 @@ export class SmartAdDetector {
     for (const keyword of highConfidenceAdKeywords) {
       if (lowerUrl.includes(keyword)) {
         isAd = true;
-        confidence = Math.max(confidence, 0.8);
+        confidence = Math.max(confidence, 0.9); // 提高高置信度关键词的权重
         reason = `URL包含高置信度广告关键词: ${keyword}`;
         break;
       }
@@ -177,14 +178,13 @@ export class SmartAdDetector {
       for (const keyword of mediumConfidenceAdKeywords) {
         if (lowerUrl.includes(keyword)) {
           isAd = true;
-          confidence = Math.max(confidence, 0.5);
+          confidence = Math.max(confidence, 0.4); // 降低中置信度关键词的初始权重
           reason = `URL包含中置信度广告关键词: ${keyword}`;
-          // 不break，让多个中置信度关键词叠加
         }
       }
       if (isAd) { // 如果有中置信度关键词，根据数量调整信心
         const foundCount = mediumConfidenceAdKeywords.filter(keyword => lowerUrl.includes(keyword)).length;
-        confidence = Math.min(0.7, 0.4 + foundCount * 0.1);
+        confidence = Math.min(0.6, 0.3 + foundCount * 0.1); // 调整中置信度上限
       }
     }
 
@@ -196,13 +196,15 @@ export class SmartAdDetector {
       /\/sponsor\//i,
       /_ad_/i,
       /-ad-/i,
-      /\.ad\./i
+      /\.ad\./i,
+      /ad_slot/i,
+      /ad_unit/i
     ];
 
     for (const pattern of adPatterns) {
       if (pattern.test(url)) {
         isAd = true;
-        confidence = Math.max(confidence, 0.7);
+        confidence = Math.max(confidence, 0.75); // 略微提高模式检测置信度
         reason = `URL匹配广告模式: ${pattern.source}`;
         break;
       }
@@ -219,10 +221,10 @@ export class SmartAdDetector {
     
     // 广告关键词 - 区分置信度
     const highConfidenceAdKeywords = [
-      '广告', '推广', '赞助', '商业广告', '宣传片', 'ad', 'commercial', 'sponsored'
+      '广告', '推广', '赞助', '商业广告', '宣传片', 'ad', 'commercial', 'sponsored', '广告时间'
     ];
     const mediumConfidenceAdKeywords = [
-      '预告', '插播', '弹窗', '横幅', '浮动', '嵌入', 'promo', 'trailer', 'preview'
+      '预告', '插播', '弹窗', '横幅', '浮动', '嵌入', 'promo', 'trailer', 'preview', '品牌合作'
     ];
 
     let confidence = 0.1;
@@ -232,7 +234,7 @@ export class SmartAdDetector {
     for (const keyword of highConfidenceAdKeywords) {
       if (lowerTitle.includes(keyword)) {
         isAd = true;
-        confidence = Math.max(confidence, 0.8);
+        confidence = Math.max(confidence, 0.85); // 提高高置信度关键词的权重
         reason = `标题包含高置信度广告关键词: ${keyword}`;
         break;
       }
@@ -242,13 +244,13 @@ export class SmartAdDetector {
       for (const keyword of mediumConfidenceAdKeywords) {
         if (lowerTitle.includes(keyword)) {
           isAd = true;
-          confidence = Math.max(confidence, 0.5);
+          confidence = Math.max(confidence, 0.45); // 降低中置信度关键词的初始权重
           reason = `标题包含中置信度广告关键词: ${keyword}`;
         }
       }
       if (isAd) {
         const foundCount = mediumConfidenceAdKeywords.filter(keyword => lowerTitle.includes(keyword)).length;
-        confidence = Math.min(0.7, 0.4 + foundCount * 0.1);
+        confidence = Math.min(0.65, 0.35 + foundCount * 0.1); // 调整中置信度上限
       }
     }
 
@@ -259,21 +261,21 @@ export class SmartAdDetector {
    * 基于序列模式分析
    */
   private analyzeBySequence(index: number, duration: number): DetectionResult {
-    // 检查是否为开头的几个短片段，但降低置信度，避免误判片头
-    if (index < 2 && duration <= 10) { // 缩短范围，降低索引要求
+    // 检查是否为开头的几个短片段，进一步降低置信度，避免误判片头
+    if (index < 2 && duration <= 8) { // 缩短时长范围
       return {
-        isAd: true,
-        confidence: 0.4, // 降低置信度
+        isAd: false, // 默认不认为是广告
+        confidence: 0.2, // 进一步降低置信度
         reason: `开头短片段 (索引: ${index}, 时长: ${duration}s)`,
         adType: 'short'
       };
     }
 
     // 检查是否有规律的短片段模式 - 仅作为辅助判断，不单独作为高置信度依据
-    if (duration <= 15) { // 缩短时长范围
+    if (duration <= 12) { // 缩短时长范围
       return {
         isAd: false, // 默认不认为是广告，除非其他因素确认
-        confidence: 0.2, // 降低置信度
+        confidence: 0.1, // 进一步降低置信度
         reason: `序列中的短片段 (索引: ${index}, 时长: ${duration}s)`,
         adType: 'unknown'
       };
