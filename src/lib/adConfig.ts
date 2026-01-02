@@ -44,7 +44,7 @@ export const DEFAULT_AD_CONFIG: AdFilterConfig = {
       enabled: true,
       urlPatterns: ['mid-roll', 'midroll', 'break', 'intermission'],
       titlePatterns: ['插播', '中断', '休息', '暂停'],
-      durationRange: { min: 10, max: 180 },
+      durationRange: { min: 3, max: 30 }, // 调整为3-30秒，针对视频中的短广告
       priority: 8
     },
     {
@@ -62,6 +62,22 @@ export const DEFAULT_AD_CONFIG: AdFilterConfig = {
       titlePatterns: ['赞助', '推广', '合作', '品牌'],
       durationRange: { min: 3, max: 60 },
       priority: 7
+    },
+    {
+      name: 'Short Video Ads', // 新增：专门针对视频中的短广告
+      enabled: true,
+      urlPatterns: ['ad', 'advertisement', 'commercial', 'marketing', 'promo', 'brand'],
+      titlePatterns: ['广告', '推广', '品牌', '营销', '商业', '赞助商'],
+      durationRange: { min: 3, max: 20 }, // 3-20秒的短广告
+      priority: 9 // 高优先级
+    },
+    {
+      name: 'Embedded Ads', // 新增：嵌入在视频中的广告
+      enabled: true,
+      urlPatterns: ['embed', 'insert', 'overlay', 'popup', 'banner'],
+      titlePatterns: ['嵌入', '插入', '弹窗', '横幅', '浮动'],
+      durationRange: { min: 5, max: 15 }, // 5-15秒的嵌入广告
+      priority: 8
     },
     {
       name: 'Generic Ads',

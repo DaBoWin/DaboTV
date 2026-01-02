@@ -4,6 +4,7 @@
  */
 
 import { AdFilterConfig, CustomPattern, getUserAdConfig } from './adConfig';
+import { smartAdDetector, DetectionResult } from './smartAdDetector';
 
 // 广告片段的特征模式
 export interface AdSegmentPattern {
@@ -32,13 +33,14 @@ const AD_PATTERNS: AdSegmentPattern[] = [
 ];
 
 /**
- * 检测片段是否为广告
+ * 检测片段是否为广告 - 增强版
  */
 export function isAdSegment(
   segmentUrl: string,
   duration?: number,
   title?: string,
-  config?: AdFilterConfig
+  config?: AdFilterConfig,
+  index?: number
 ): boolean {
   const adConfig = config || getUserAdConfig();
   
@@ -46,7 +48,21 @@ export function isAdSegment(
     return false;
   }
 
-  // 检查自定义模式
+  // 1. 使用智能检测器进行初步判断
+  const smartResult: DetectionResult = smartAdDetector.detectAd({
+    url: segmentUrl,
+    duration,
+    title,
+    index
+  });
+
+  // 如果智能检测器有高置信度结果，直接使用
+  if (smartResult.confidence >= 0.7) {
+    console.log(`[AdFilter] 智能检测${smartResult.isAd ? '到' : '非'}广告: ${smartResult.reason} (置信度: ${smartResult.confidence})`);
+    return smartResult.isAd;
+  }
+
+  // 2. 检查自定义模式
   for (const pattern of adConfig.customPatterns) {
     if (!pattern.enabled) continue;
     
@@ -80,7 +96,45 @@ export function isAdSegment(
     }
   }
 
-  // 检查预定义模式（仅在非严格模式下）
+  // 3. 智能检测：基于片段特征的启发式判断（仅在非严格模式下）
+  if (!adConfig.strictMode && duration) {
+    // 短片段检测：3-25秒的片段很可能是广告
+    if (duration >= 3 && duration <= 25) {
+      // 检查URL中是否包含广告相关关键词
+      const adKeywords = [
+        'ad', 'ads', 'advertisement', 'commercial', 'promo', 'promotion',
+        'sponsor', 'sponsored', 'brand', 'marketing', 'advert'
+      ];
+      
+      const hasAdKeyword = adKeywords.some(keyword =>
+        segmentUrl.toLowerCase().includes(keyword.toLowerCase())
+      );
+      
+      if (hasAdKeyword) {
+        console.log(`[AdFilter] 智能检测到短广告片段: ${duration}s, ${segmentUrl}`);
+        return true;
+      }
+    }
+    
+    // 中等片段检测：15-45秒，可能是插播广告
+    if (duration >= 15 && duration <= 45) {
+      const midRollKeywords = [
+        'mid', 'break', 'intermission', 'insert', 'embed',
+        'popup', 'overlay', 'banner', 'floating'
+      ];
+      
+      const hasMidRollKeyword = midRollKeywords.some(keyword =>
+        segmentUrl.toLowerCase().includes(keyword.toLowerCase())
+      );
+      
+      if (hasMidRollKeyword) {
+        console.log(`[AdFilter] 智能检测到插播广告: ${duration}s, ${segmentUrl}`);
+        return true;
+      }
+    }
+  }
+
+  // 4. 检查预定义模式（仅在非严格模式下）
   if (!adConfig.strictMode) {
     return AD_PATTERNS.some(pattern => {
       // 检查 URL 关键词
@@ -107,6 +161,12 @@ export function isAdSegment(
 
       return true;
     });
+  }
+
+  // 5. 如果智能检测器有中等置信度结果，结合其他因素判断
+  if (smartResult.confidence >= 0.4 && smartResult.isAd) {
+    console.log(`[AdFilter] 智能检测中等置信度广告: ${smartResult.reason} (置信度: ${smartResult.confidence})`);
+    return true;
   }
 
   return false;
@@ -170,10 +230,10 @@ export class AdFilter {
   }
 
   /**
-   * 检测是否为广告
+   * 检测是否为广告 - 增强版
    */
-  isAd(segmentUrl: string, duration?: number, title?: string): boolean {
-    return isAdSegment(segmentUrl, duration, title, this.config);
+  isAd(segmentUrl: string, duration?: number, title?: string, index?: number): boolean {
+    return isAdSegment(segmentUrl, duration, title, this.config, index);
   }
 
   /**

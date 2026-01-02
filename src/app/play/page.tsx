@@ -522,14 +522,96 @@ function PlayPageClient() {
 
             ensureVideoSource(video, url);
 
-            // 广告过滤：监听片段加载事件
+            // 广告过滤：监听片段加载事件 - 增强版
             hls.on(Hls.Events.FRAG_LOADING, function (event: any, data: any) {
               const fragUrl = data.frag.url || data.frag.uri;
-              if (fragUrl && adFilter.isAd(fragUrl)) {
-                console.log(`[AdFilter] 检测到广告片段，跳过: ${fragUrl}`);
-                // 跳过广告片段
-                hls.nextLevel();
+              const fragDuration = data.frag.duration || data.frag.inf?.duration;
+              const fragIndex = data.frag.index || data.frag.sn;
+              
+              // 使用增强的广告检测
+              const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, fragIndex);
+              
+              if (isAd) {
+                console.log(`[AdFilter] 检测到广告片段，跳过: ${fragUrl} (${fragDuration}s, 索引: ${fragIndex})`);
+                
+                // 方法1: 尝试跳过当前片段
+                try {
+                  // 设置播放位置到片段结束时间
+                  if (video.currentTime && fragDuration) {
+                    const skipTime = video.currentTime + fragDuration;
+                    video.currentTime = Math.min(skipTime, video.duration || skipTime);
+                  }
+                } catch (error) {
+                  console.warn('[AdFilter] 跳过片段失败:', error);
+                }
+                
+                // 方法2: 尝试切换到下一个质量级别
+                try {
+                  if (hls.nextLoadLevel !== undefined) {
+                    hls.nextLoadLevel = hls.nextLoadLevel;
+                  }
+                } catch (error) {
+                  console.warn('[AdFilter] 切换级别失败:', error);
+                }
               }
+            });
+
+            // 监听片段解析完成事件，获取更详细的片段信息
+            hls.on(Hls.Events.FRAG_PARSING_METADATA, function (event: any, data: any) {
+              const fragUrl = data.frag?.url || data.frag?.uri;
+              const fragDuration = data.frag?.duration;
+              const fragIndex = data.frag?.index || data.frag?.sn;
+              
+              if (fragUrl) {
+                const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, undefined, fragIndex);
+                if (isAd) {
+                  console.log(`[AdFilter] 片段元数据检测到广告: ${fragUrl} (${fragDuration}s, 索引: ${fragIndex})`);
+                }
+              }
+            });
+
+            // 监听片段加载完成事件，进行二次检查和快速跳过
+            hls.on(Hls.Events.FRAG_LOADED, function (event: any, data: any) {
+              const fragUrl = data.frag.url || data.frag.uri;
+              const fragDuration = data.frag.duration;
+              const fragIndex = data.frag.index || data.frag.sn;
+              
+              if (fragUrl) {
+                const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, undefined, fragIndex);
+                
+                if (isAd && fragDuration && video.currentTime) {
+                  console.log(`[AdFilter] 片段加载完成后检测到广告，快速跳过: ${fragUrl} (${fragDuration}s)`);
+                  
+                  // 快速跳过广告片段
+                  try {
+                    const currentTime = video.currentTime;
+                    const skipTarget = currentTime + fragDuration;
+                    
+                    // 使用小幅度多次跳过，避免被检测
+                    const skipSteps = Math.ceil(fragDuration / 2);
+                    let currentSkip = 0;
+                    
+                    const skipInterval = setInterval(() => {
+                      if (currentSkip >= skipSteps || video.currentTime >= skipTarget) {
+                        clearInterval(skipInterval);
+                        return;
+                      }
+                      
+                      video.currentTime = Math.min(video.currentTime + 2, skipTarget);
+                      currentSkip++;
+                    }, 100);
+                    
+                  } catch (error) {
+                    console.warn('[AdFilter] 快速跳过失败:', error);
+                  }
+                }
+              }
+            });
+
+            // 监听播放时间更新，检测可能的广告片段
+            hls.on(Hls.Events.TIME_UPDATE, function (event: any, data: any) {
+              // 这里可以添加基于播放时间的广告检测逻辑
+              // 例如检测播放进度是否在广告时间段内
             });
 
             // 监听播放列表解析完成事件，过滤广告片段
