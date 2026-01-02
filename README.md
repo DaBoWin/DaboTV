@@ -1,10 +1,10 @@
-# MoonTV
+# DanaiTV
 
 <div align="center">
   <img src="public/logo.png" alt="LibreTV Logo" width="120">
 </div>
 
-> 🎬 **MoonTV** 是一个开箱即用的、跨平台的影视聚合播放器。它基于 **Next.js 14** + **Tailwind&nbsp;CSS** + **TypeScript** 构建，支持多资源搜索、在线播放、收藏同步、播放记录、本地/云端存储，让你可以随时随地畅享海量免费影视内容。
+> 🎬 **DanaiTV** 是一个开箱即用的、跨平台的影视聚合播放器。它基于 **Next.js 14** + **Tailwind&nbsp;CSS** + **TypeScript** 构建，支持多资源搜索、在线播放、收藏同步、播放记录、本地/云端存储，让你可以随时随地畅享海量免费影视内容。
 
 <div align="center">
 
@@ -79,11 +79,11 @@
 
 ```bash
 # 拉取预构建镜像
-docker pull ghcr.io/senshinya/moontv:latest
+docker pull ghcr.io/senshinya/danaitv:latest
 
 # 运行容器
 # -d: 后台运行  -p: 映射端口 3000 -> 3000
-docker run -d --name moontv -p 3000:3000 ghcr.io/senshinya/moontv:latest
+docker run -d --name danaitv -p 3000:3000 ghcr.io/senshinya/danaitv:latest
 ```
 
 访问 `http://服务器 IP:3000` 即可。
@@ -93,9 +93,9 @@ docker run -d --name moontv -p 3000:3000 ghcr.io/senshinya/moontv:latest
 ```yaml
 version: '3.9'
 services:
-  moontv:
-    image: ghcr.io/senshinya/moontv:latest
-    container_name: moontv
+  danaitv:
+    image: ghcr.io/senshinya/danaitv:latest
+    container_name: danaitv
     restart: unless-stopped
     ports:
       - '3000:3000'
@@ -149,7 +149,7 @@ Pull Bot 会反复触发无效的 PR 和垃圾邮件，严重干扰项目维护�
   - `name`：在人机界面中展示的名称。
   - `detail`：（可选）部分无法通过 API 获取剧集详情的站点，需要提供网页详情根 URL，用于爬取。
 
-MoonTV 支持标准的苹果 CMS V10 API 格式。
+DanaiTV 支持标准的苹果 CMS V10 API 格式。
 
 修改后 **无需重新构建**，服务会在启动时读取一次。
 

@@ -27,17 +27,25 @@ export interface PlayRecord {
 }
 
 // ---- 常量 ----
-const PLAY_RECORDS_KEY = 'moontv_play_records';
+const PLAY_RECORDS_KEY = 'danaitv_play_records';
 
 // ---- 环境变量 ----
 const STORAGE_TYPE =
-  (process.env.NEXT_PUBLIC_STORAGE_TYPE as
-    | 'localstorage'
-    | 'database'
-    | undefined) || 'localstorage';
+  (typeof window !== 'undefined' &&
+    (window as any).__DANAITV_STORAGE_TYPE__) ||
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_DANAITV_STORAGE_TYPE) ||
+  (typeof localStorage !== 'undefined' &&
+    localStorage.getItem('danaitv_storage_type')) ||
+  (typeof sessionStorage !== 'undefined' &&
+    sessionStorage.getItem('danaitv_storage_type')) ||
+  (typeof globalThis !== 'undefined' &&
+    (globalThis as any).DANAITV_STORAGE_TYPE) ||
+  (typeof global !== 'undefined' &&
+    (global as any).DANAITV_STORAGE_TYPE) ||
+  'localstorage';
 
 // ---------------- 搜索历史相关常量 ----------------
-const SEARCH_HISTORY_KEY = 'moontv_search_history';
+const SEARCH_HISTORY_KEY = 'danaitv_search_history';
 
 // 搜索历史最大保存条数
 const SEARCH_HISTORY_LIMIT = 20;
@@ -277,7 +285,7 @@ export interface Favorite {
 }
 
 // 收藏在 localStorage 中使用的 key
-const FAVORITES_KEY = 'moontv_favorites';
+const FAVORITES_KEY = 'danaitv_favorites';
 
 /**
  * 获取全部收藏
