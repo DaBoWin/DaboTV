@@ -563,7 +563,7 @@ function PlayPageClient() {
               const fragIndex = data.frag?.index || data.frag?.sn;
               
               if (fragUrl) {
-                const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, undefined, fragIndex);
+                const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, fragIndex);
                 if (isAd) {
                   console.log(`[AdFilter] 片段元数据检测到广告: ${fragUrl} (${fragDuration}s, 索引: ${fragIndex})`);
                 }
@@ -577,7 +577,7 @@ function PlayPageClient() {
               const fragIndex = data.frag.index || data.frag.sn;
               
               if (fragUrl) {
-                const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, undefined, fragIndex);
+                const isAd = adFilter.isAd(fragUrl, fragDuration, undefined, fragIndex);
                 
                 if (isAd && fragDuration && video.currentTime) {
                   console.log(`[AdFilter] 片段加载完成后检测到广告，快速跳过: ${fragUrl} (${fragDuration}s)`);
